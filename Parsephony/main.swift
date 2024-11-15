@@ -40,6 +40,7 @@ if let configText = configParser.getConfigText() {
     do {
         try configText.write(toFile: outputFilePath, atomically: true, encoding: .utf8)
         print("Configuration file generated at \(outputFilePath)")
+        print("Mathematical expressions evaluated: \(configParser.expressionCount)")
     } catch {
         print("Error: Failed to write output file: \(error.localizedDescription)")
         exit(1)

@@ -21,7 +21,6 @@ comment]]
     message:
         [[Hello, World!]]
 """
-
         try await testParsing(xmlString: xmlString, expectedConfig: expectedConfig)
     }
 
@@ -51,9 +50,8 @@ config:
         let name = [[pi]];
         let value = [[3.14]];
     useConstant:
-        [[\\$pi\\$]]
+        [[3.14]]
 """
-
         try await testParsing(xmlString: xmlString, expectedConfig: expectedConfig)
     }
 
@@ -78,7 +76,6 @@ config:
             height:
                 [[1080]]
 """
-
         try await testParsing(xmlString: xmlString, expectedConfig: expectedConfig)
     }
 
@@ -109,7 +106,6 @@ networkConfig:
         client:
             [[192.168.1.3]]
 """
-
         try await testParsing(xmlString: xmlString, expectedConfig: expectedConfig)
     }
 
@@ -158,7 +154,6 @@ course:
                 lesson:
                     [[Loops]]
 """
-
         try await testParsing(xmlString: xmlString, expectedConfig: expectedConfig)
     }
 
@@ -186,7 +181,24 @@ computer:
         capacity:
             [[512GB]]
 """
-
+        try await testParsing(xmlString: xmlString, expectedConfig: expectedConfig)
+    }
+    
+    @Test func testExpressionEvaluationInAttributes() async throws {
+        let xmlString = """
+        <layout>
+            <TextView
+                android:textSize="$10 + 5 * 2$"
+                android:textColor="$255 - 128$" />
+        </layout>
+        """
+        
+        let expectedConfig = """
+layout:
+    TextView:
+        let android:textColor = [[127]];
+        let android:textSize = [[20]];
+"""
         try await testParsing(xmlString: xmlString, expectedConfig: expectedConfig)
     }
 

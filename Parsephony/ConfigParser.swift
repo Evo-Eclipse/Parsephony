@@ -17,9 +17,17 @@ class ConfigParser: NSObject, XMLParserDelegate {
     // Accumulate characters between XML tags
     var currentCharacters: String = ""
     
+    // Dictionary to store constants
+    var constants: [String: Double] = [:]
+    
+    // Counter for mathematical expressions evaluated
+    var expressionCount: Int = 0
+    
     func parserDidStartDocument(_ parser: XMLParser) {
         rootElement = nil
         elementStack = []
+        constants = [:]
+        expressionCount = 0
     }
     
     func parser(_ parser: XMLParser, didStartElement elementName: String,
@@ -51,6 +59,15 @@ class ConfigParser: NSObject, XMLParserDelegate {
         
         // Reset currentCharacters
         currentCharacters = ""
+        
+        // If the element is a constant, store it in the constants dictionary
+        if completedElement.name == "constant" {
+            if let name = completedElement.attributes["name"],
+               let valueStr = completedElement.attributes["value"],
+               let value = Double(valueStr) {
+                constants[name] = value
+            }
+        }
         
         // Add the completed element to its parent's children or set as root
         if var parentElement = elementStack.last {
@@ -86,15 +103,19 @@ class ConfigParser: NSObject, XMLParserDelegate {
         // Element name
         result += "\(indent)\(element.name):\n"
         
-        // Attributes as constants
-        for (key, value) in element.attributes {
-            result += "\(indent)    let \(key) = [[\(value)]];\n"
+        // Sort attributes alphabetically for consistent ordering
+        let sortedAttributes = element.attributes.sorted { $0.key < $1.key }
+        
+        // Attributes as constants with expression evaluation
+        for (key, value) in sortedAttributes {
+            let evaluatedValue = evaluateExpressions(in: value)
+            result += "\(indent)    let \(key) = [[\(evaluatedValue)]];\n"
         }
         
-        // Element value
+        // Element value with expression evaluation
         if let value = element.value {
-            let escapedValue = value.replacingOccurrences(of: "$", with: "\\$")
-            result += "\(indent)    [[\(escapedValue)]]\n"
+            let evaluatedValue = evaluateExpressions(in: value)
+            result += "\(indent)    [[\(evaluatedValue)]]\n"
         }
         
         // Children
@@ -103,5 +124,65 @@ class ConfigParser: NSObject, XMLParserDelegate {
         }
         
         return result
+    }
+    
+    // Function to evaluate expressions enclosed in dollar signs
+    private func evaluateExpressions(in value: String) -> String {
+        var result = value
+        let pattern = "\\$(.*?)\\$"
+        
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+            return result.replacingOccurrences(of: "$", with: "\\$")
+        }
+        
+        let matches = regex.matches(in: value, options: [], range: NSRange(location: 0, length: value.utf16.count))
+        
+        // Process matches in reverse to avoid range issues during replacement
+        for match in matches.reversed() {
+            if match.numberOfRanges >= 2, let range = Range(match.range(at: 1), in: value) {
+                let expressionString = String(value[range])
+                if let evaluated = evaluateExpression(expressionString) {
+                    expressionCount += 1
+                    // Replace the entire "$...$" with the evaluated value
+                    if let fullRange = Range(match.range(at: 0), in: result) {
+                        result.replaceSubrange(fullRange, with: "\(evaluated)")
+                    }
+                }
+            }
+        }
+        
+        // Escape any remaining dollar signs
+        result = result.replacingOccurrences(of: "$", with: "\\$")
+        
+        return result
+    }
+    
+    // Function to evaluate a single mathematical expression
+    private func evaluateExpression(_ expression: String) -> String? {
+        var expr = expression
+        
+        // Replace constants in the expression with their values
+        for (name, value) in constants {
+            // Use word boundaries to avoid partial replacements
+            let pattern = "\\b\(NSRegularExpression.escapedPattern(for: name))\\b"
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
+                expr = regex.stringByReplacingMatches(in: expr, options: [], range: NSRange(location: 0, length: expr.utf16.count), withTemplate: "\(value)")
+            }
+        }
+        
+        // Use NSExpression to evaluate the mathematical expression
+        let expressionToEvaluate = NSExpression(format: expr)
+        if let result = expressionToEvaluate.expressionValue(with: nil, context: nil) as? NSNumber {
+            let doubleValue = result.doubleValue
+            // Check if the double value is a whole number
+            if doubleValue == floor(doubleValue) {
+                return String(format: "%.0f", doubleValue)
+            } else {
+                return String(doubleValue)
+            }
+        }
+        
+        // If evaluation fails, return nil
+        return nil
     }
 }
